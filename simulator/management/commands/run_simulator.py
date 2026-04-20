@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from decimal import Decimal
 
-from simulator.services import bootstrap_default_account, reset_account_state, run_loop, run_once
+from simulator.services import DEFAULT_EDGE_THRESHOLD, bootstrap_default_account, reset_account_state, run_loop, run_once
 
 
 class Command(BaseCommand):
@@ -11,7 +11,7 @@ class Command(BaseCommand):
         parser.add_argument('--loop', action='store_true', help='Run continuously in loop mode.')
         parser.add_argument('--interval', type=int, default=300, help='Loop interval in seconds (default: 300).')
         parser.add_argument('--reset', action='store_true', help='Reset paper account history and balances before run.')
-        parser.add_argument('--threshold', type=str, default='0.02', help='Minimum edge threshold for opening trades.')
+        parser.add_argument('--threshold', type=str, default=str(DEFAULT_EDGE_THRESHOLD), help='Minimum edge threshold for opening trades.')
 
     def handle(self, *args, **options):
         account = bootstrap_default_account()

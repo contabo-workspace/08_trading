@@ -30,6 +30,7 @@ from .models import (
 DECIMAL_ZERO = Decimal('0.00')
 DECIMAL_ONE = Decimal('1.0000')
 DECIMAL_HALF = Decimal('0.5000')
+DEFAULT_EDGE_THRESHOLD = Decimal('0.01')
 
 # Public feeds are available without API keys. Paid API/social providers can be enabled via env vars.
 RSS_SOURCES = {
@@ -406,16 +407,21 @@ def generate_predictions(window_hours: int = 24) -> int:
             weighted += Decimal(signal.sentiment_score) * signal_weight
             weight_sum += signal_weight
 
+        local_signal_multiplier = Decimal(os.getenv('SIMULATOR_LOCAL_SIGNAL_MULTIPLIER', '0.14'))
+        global_signal_multiplier = Decimal(os.getenv('SIMULATOR_GLOBAL_SIGNAL_MULTIPLIER', '0.08'))
+
         if weight_sum > 0:
             local_score = weighted / weight_sum
             confidence = min(Decimal('92.00'), Decimal('42.00') + Decimal(relevant_count * 2))
             reasoning = f'Relevance-weighted sentiment from {relevant_count} matching world signals.'
+            price_shift = local_score * local_signal_multiplier
         else:
             local_score = global_score * Decimal('0.35')
             confidence = Decimal('35.00')
             reasoning = 'No strong direct signal match; fallback to global macro sentiment.'
+            price_shift = local_score * global_signal_multiplier
 
-        prob_yes = _bounded_price(Decimal(market.last_price_yes) + (local_score * Decimal('0.08')))
+        prob_yes = _bounded_price(Decimal(market.last_price_yes) + price_shift)
 
         prediction = MarketPrediction.objects.create(
             market=market,
@@ -546,7 +552,7 @@ def _close_position(position: Position, close_prob: Decimal, note: str) -> None:
     )
 
 
-def execute_trading_cycle(account: SimulationAccount, threshold: Decimal = Decimal('0.02')) -> dict[str, int]:
+def execute_trading_cycle(account: SimulationAccount, threshold: Decimal = DEFAULT_EDGE_THRESHOLD) -> dict[str, int]:
     opens = 0
     closes = 0
     min_liquidity = Decimal(os.getenv('SIMULATOR_MIN_LIQUIDITY_USD', '5000'))
@@ -694,7 +700,7 @@ def reset_account_state(account: SimulationAccount) -> None:
     account.save(update_fields=['balance_cash', 'balance_reserved'])
 
 
-def run_once(threshold: Decimal = Decimal('0.02')) -> dict[str, int]:
+def run_once(threshold: Decimal = DEFAULT_EDGE_THRESHOLD) -> dict[str, int]:
     account = bootstrap_default_account()
     markets_synced = sync_polymarket_markets(limit=250)
     created_signals = ingest_world_signals()
@@ -709,7 +715,7 @@ def run_once(threshold: Decimal = Decimal('0.02')) -> dict[str, int]:
     }
 
 
-def run_loop(interval_seconds: int = 300, threshold: Decimal = Decimal('0.02')) -> None:
+def run_loop(interval_seconds: int = 300, threshold: Decimal = DEFAULT_EDGE_THRESHOLD) -> None:
     while True:
         run_once(threshold=threshold)
         time.sleep(max(20, interval_seconds))
