@@ -129,6 +129,7 @@
             gap: 0.45rem;
             color: var(--muted);
             font-size: 0.82rem;
+            flex-wrap: wrap;
         }
         .market-select {
             border: 1px solid var(--line);
@@ -145,6 +146,9 @@
         #detail-chart {
             width: 100%;
             height: 100%;
+        }
+        .detail-trades {
+            margin-top: 0.65rem;
         }
         table {
             width: 100%;
@@ -275,6 +279,13 @@
                 <div class="select-wrap">
                     <label for="market-select">Trh:</label>
                     <select id="market-select" class="market-select"></select>
+                    <label for="timeframe-select">Timeframe:</label>
+                    <select id="timeframe-select" class="market-select" style="min-width:90px;max-width:110px;">
+                        <option value="15m">15m</option>
+                        <option value="1h" selected>1h</option>
+                        <option value="4h">4h</option>
+                        <option value="1d">1d</option>
+                    </select>
                 </div>
             </div>
             <div class="chart-wrap detail-wrap">
@@ -282,6 +293,14 @@
                 <div id="detail-empty" class="empty" style="display:none;">Pro vybraný trh ještě není dost dat na svíčkový graf.</div>
             </div>
             <div class="hint">Svíčky: vývoj pravděpodobnosti ANO. Zelené body jsou nákupy, červené prodeje. Modrá čára = vstup, žlutá = break-even.</div>
+            <div class="table-wrap detail-trades">
+                <table>
+                    <thead><tr><th>Čas</th><th>Akce</th><th>Strana</th><th>Cena ANO</th><th>Objem</th><th>Poplatek</th></tr></thead>
+                    <tbody id="detail-trades-body">
+                        <tr><td colspan="6" class="empty">Pro vybraný trh zatím nejsou obchody.</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
         <section class="two">
@@ -345,6 +364,11 @@
     {{ advanced_markers|json_script:"advanced-markers" }}
     {{ advanced_entry_line|json_script:"advanced-entry-line" }}
     {{ advanced_breakeven_line|json_script:"advanced-breakeven-line" }}
+    {{ advanced_stop_loss_line|json_script:"advanced-stop-loss-line" }}
+    {{ advanced_take_profit_line|json_script:"advanced-take-profit-line" }}
+    {{ advanced_recent_trades|json_script:"advanced-recent-trades" }}
+    {{ advanced_selected_timeframe|json_script:"advanced-selected-timeframe" }}
+    {{ advanced_timeframes|json_script:"advanced-timeframes" }}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script>
@@ -365,6 +389,7 @@
                     localStorage.setItem('simple_trading_theme', 'light');
                 }
                 renderCharts(chartState);
+                renderDetailChart(detailState);
             });
 
             var chartState = {
@@ -380,9 +405,15 @@
                 candles: JSON.parse((document.getElementById('advanced-candles') || {}).textContent || '[]'),
                 markers: JSON.parse((document.getElementById('advanced-markers') || {}).textContent || '[]'),
                 entryLine: JSON.parse((document.getElementById('advanced-entry-line') || {}).textContent || 'null'),
-                breakevenLine: JSON.parse((document.getElementById('advanced-breakeven-line') || {}).textContent || 'null')
+                breakevenLine: JSON.parse((document.getElementById('advanced-breakeven-line') || {}).textContent || 'null'),
+                stopLossLine: JSON.parse((document.getElementById('advanced-stop-loss-line') || {}).textContent || 'null'),
+                takeProfitLine: JSON.parse((document.getElementById('advanced-take-profit-line') || {}).textContent || 'null'),
+                recentTrades: JSON.parse((document.getElementById('advanced-recent-trades') || {}).textContent || '[]'),
+                selectedTimeframe: JSON.parse((document.getElementById('advanced-selected-timeframe') || {}).textContent || '"1h"'),
+                timeframes: JSON.parse((document.getElementById('advanced-timeframes') || {}).textContent || '[]')
             };
             var selectedMarketSymbol = detailState.selectedSymbol || '';
+            var selectedTimeframe = detailState.selectedTimeframe || '1h';
 
             var equityChartRef = null;
             var profitChartRef = null;
@@ -520,6 +551,39 @@
                 select.value = selectedMarketSymbol;
             }
 
+            function refreshTimeframeSelect(data) {
+                var select = document.getElementById('timeframe-select');
+                if (!select) {
+                    return;
+                }
+                var available = data.timeframes || ['15m', '1h', '4h', '1d'];
+                var desired = selectedTimeframe || data.selectedTimeframe || '1h';
+                var exists = available.some(function(tf) { return tf === desired; });
+                selectedTimeframe = exists ? desired : '1h';
+                select.value = selectedTimeframe;
+            }
+
+            function refreshDetailTrades(data) {
+                var body = document.getElementById('detail-trades-body');
+                if (!body) {
+                    return;
+                }
+                if (!data.recentTrades || !data.recentTrades.length) {
+                    body.innerHTML = '<tr><td colspan="6" class="empty">Pro vybraný trh zatím nejsou obchody.</td></tr>';
+                    return;
+                }
+                body.innerHTML = data.recentTrades.map(function(t) {
+                    return '<tr>'
+                        + '<td>' + t.time + '</td>'
+                        + '<td>' + t.action + '</td>'
+                        + '<td>' + t.side + '</td>'
+                        + '<td>' + t.price_yes + '</td>'
+                        + '<td>$' + t.size_usd + '</td>'
+                        + '<td>$' + t.fee_usd + '</td>'
+                        + '</tr>';
+                }).join('');
+            }
+
             function renderDetailChart(data) {
                 var chartHost = document.getElementById('detail-chart');
                 var empty = document.getElementById('detail-empty');
@@ -590,6 +654,50 @@
                         }
                     });
                 }
+                if (typeof data.stopLossLine === 'number') {
+                    yAnnotations.push({
+                        y: data.stopLossLine,
+                        borderColor: '#ff8f78',
+                        strokeDashArray: 4,
+                        label: {
+                            text: 'Stop-loss',
+                            style: { color: '#0b1220', background: '#ff8f78' }
+                        }
+                    });
+                }
+                if (typeof data.takeProfitLine === 'number') {
+                    yAnnotations.push({
+                        y: data.takeProfitLine,
+                        borderColor: '#62d39a',
+                        strokeDashArray: 4,
+                        label: {
+                            text: 'Take-profit',
+                            style: { color: '#0b1220', background: '#62d39a' }
+                        }
+                    });
+                }
+
+                var yValues = [];
+                data.candles.forEach(function(c) {
+                    if (c && c.y && c.y.length === 4) {
+                        yValues.push(Number(c.y[1]));
+                        yValues.push(Number(c.y[2]));
+                    }
+                });
+                if (typeof data.entryLine === 'number') { yValues.push(data.entryLine); }
+                if (typeof data.breakevenLine === 'number') { yValues.push(data.breakevenLine); }
+                if (typeof data.stopLossLine === 'number') { yValues.push(data.stopLossLine); }
+                if (typeof data.takeProfitLine === 'number') { yValues.push(data.takeProfitLine); }
+
+                var yMin = 0;
+                var yMax = 1;
+                if (yValues.length) {
+                    var minVal = Math.min.apply(null, yValues);
+                    var maxVal = Math.max.apply(null, yValues);
+                    var span = Math.max(0.01, maxVal - minVal);
+                    yMin = Math.max(0, minVal - span * 0.25);
+                    yMax = Math.min(1, maxVal + span * 0.25);
+                }
 
                 var options = {
                     chart: {
@@ -616,8 +724,8 @@
                         labels: { style: { colors: cssVar('--muted') } }
                     },
                     yaxis: {
-                        min: 0,
-                        max: 1,
+                        min: yMin,
+                        max: yMax,
                         labels: {
                             formatter: function(val) { return Number(val).toFixed(2); },
                             style: { colors: cssVar('--muted') }
@@ -713,8 +821,15 @@
 
             function pollData() {
                 var url = '/api/dashboard/';
+                var query = [];
                 if (selectedMarketSymbol) {
-                    url += '?market_symbol=' + encodeURIComponent(selectedMarketSymbol);
+                    query.push('market_symbol=' + encodeURIComponent(selectedMarketSymbol));
+                }
+                if (selectedTimeframe) {
+                    query.push('timeframe=' + encodeURIComponent(selectedTimeframe));
+                }
+                if (query.length) {
+                    url += '?' + query.join('&');
                 }
                 fetch(url, { cache: 'no-store' })
                     .then(function(resp) { return resp.json(); })
@@ -735,12 +850,19 @@
                             candles: data.advanced_candles || [],
                             markers: data.advanced_markers || [],
                             entryLine: data.advanced_entry_line,
-                            breakevenLine: data.advanced_breakeven_line
+                            breakevenLine: data.advanced_breakeven_line,
+                            stopLossLine: data.advanced_stop_loss_line,
+                            takeProfitLine: data.advanced_take_profit_line,
+                            recentTrades: data.advanced_recent_trades || [],
+                            selectedTimeframe: data.advanced_selected_timeframe || '1h',
+                            timeframes: data.advanced_timeframes || ['15m', '1h', '4h', '1d']
                         };
                         refreshKpis(data);
                         refreshTables(data);
                         renderCharts(chartState);
                         refreshMarketSelect(detailState);
+                        refreshTimeframeSelect(detailState);
+                        refreshDetailTrades(detailState);
                         renderDetailChart(detailState);
                     })
                     .catch(function() {
@@ -755,9 +877,18 @@
                     pollData();
                 });
             }
+            var timeframeSelect = document.getElementById('timeframe-select');
+            if (timeframeSelect) {
+                timeframeSelect.addEventListener('change', function() {
+                    selectedTimeframe = timeframeSelect.value || '1h';
+                    pollData();
+                });
+            }
 
             renderCharts(chartState);
             refreshMarketSelect(detailState);
+            refreshTimeframeSelect(detailState);
+            refreshDetailTrades(detailState);
             renderDetailChart(detailState);
             pollData();
             setInterval(pollData, 5000);

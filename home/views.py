@@ -65,13 +65,37 @@ def _position_break_even_probability(position: Position, account: SimulationAcco
     return max(Decimal('0.01'), min(Decimal('0.99'), close_prob))
 
 
+def _position_target_probability(position: Position, account: SimulationAccount, target_pnl: Decimal) -> Decimal:
+    qty = Decimal(position.quantity_shares)
+    if qty <= Decimal('0'):
+        return Decimal(position.entry_prob)
+
+    denominator = Decimal('1.0') - Decimal(account.fee_rate)
+    if denominator <= Decimal('0'):
+        return Decimal(position.entry_prob)
+
+    proceeds = (Decimal(position.size_usd) + Decimal(position.fee_open) + target_pnl) / denominator
+    close_prob = proceeds / qty
+    return max(Decimal('0.01'), min(Decimal('0.99'), close_prob))
+
+
 def _yes_equivalent(probability: Decimal, side: str) -> Decimal:
     if side == Position.SIDE_NO:
         return max(Decimal('0.01'), min(Decimal('0.99'), Decimal('1.0') - Decimal(probability)))
     return max(Decimal('0.01'), min(Decimal('0.99'), Decimal(probability)))
 
 
-def _build_dashboard_payload(selected_market_symbol: str | None = None) -> dict:
+def _timeframe_settings(timeframe: str) -> dict:
+    tf_map = {
+        '15m': {'hours': 8, 'bucket': 1, 'max_points': 180},
+        '1h': {'hours': 36, 'bucket': 5, 'max_points': 180},
+        '4h': {'hours': 7 * 24, 'bucket': 15, 'max_points': 180},
+        '1d': {'hours': 30 * 24, 'bucket': 60, 'max_points': 220},
+    }
+    return tf_map.get(timeframe, tf_map['1h'])
+
+
+def _build_dashboard_payload(selected_market_symbol: str | None = None, selected_timeframe: str = '1h') -> dict:
     payload = {'simulator_ready': False}
     account = SimulationAccount.objects.filter(is_active=True).order_by('created_at').first()
     if not account:
@@ -160,6 +184,11 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None) -> dict:
             'advanced_markers': [],
             'advanced_entry_line': None,
             'advanced_breakeven_line': None,
+            'advanced_stop_loss_line': None,
+            'advanced_take_profit_line': None,
+            'advanced_recent_trades': [],
+            'advanced_selected_timeframe': selected_timeframe,
+            'advanced_timeframes': ['15m', '1h', '4h', '1d'],
         }
     )
 
@@ -197,13 +226,19 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None) -> dict:
         payload['advanced_selected_symbol'] = focus_market.symbol
         payload['advanced_market_name'] = focus_market.name
 
+        tf_value = selected_timeframe if selected_timeframe in {'15m', '1h', '4h', '1d'} else '1h'
+        tf_cfg = _timeframe_settings(tf_value)
+        payload['advanced_selected_timeframe'] = tf_value
+
+        since_dt = timezone.now() - timedelta(hours=tf_cfg['hours'])
+
         prediction_points = list(
-            MarketPrediction.objects.filter(market=focus_market)
+            MarketPrediction.objects.filter(market=focus_market, created_at__gte=since_dt)
             .order_by('-created_at')[:800]
         )
         prediction_points.reverse()
-        candles = _build_candles(prediction_points, bucket_minutes=5)
-        payload['advanced_candles'] = candles[-120:]
+        candles = _build_candles(prediction_points, bucket_minutes=tf_cfg['bucket'])
+        payload['advanced_candles'] = candles[-tf_cfg['max_points']:]
 
         trade_points = list(
             SimulationTrade.objects.filter(account=account, market=focus_market)
@@ -226,6 +261,17 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None) -> dict:
                 }
             )
         payload['advanced_markers'] = markers[-80:]
+        payload['advanced_recent_trades'] = [
+            {
+                'time': timezone.localtime(t.executed_at).strftime('%d.%m. %H:%M:%S'),
+                'action': 'Nákup' if t.action.lower() == 'buy' else 'Prodej',
+                'side': 'ANO' if t.side.lower() == 'yes' else 'NE',
+                'price_yes': f"{_yes_equivalent(Decimal(t.probability), t.side):.4f}",
+                'size_usd': f"{t.size_usd:.2f}",
+                'fee_usd': f"{t.fee_usd:.2f}",
+            }
+            for t in trade_points[-12:][::-1]
+        ]
 
         open_position = (
             Position.objects.filter(account=account, market=focus_market, status=Position.STATUS_OPEN)
@@ -236,8 +282,18 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None) -> dict:
             entry_yes = _yes_equivalent(Decimal(open_position.entry_prob), open_position.side)
             breakeven_side_prob = _position_break_even_probability(open_position, account)
             breakeven_yes = _yes_equivalent(breakeven_side_prob, open_position.side)
+
+            stop_loss_pct = Decimal(os.getenv('SIMULATOR_STOP_LOSS_PCT', '0.35'))
+            take_profit_pct = Decimal(os.getenv('SIMULATOR_TAKE_PROFIT_PCT', '0.20'))
+            stop_loss_target = Decimal(open_position.size_usd) * stop_loss_pct * Decimal('-1')
+            take_profit_target = Decimal(open_position.size_usd) * take_profit_pct
+            stop_side_prob = _position_target_probability(open_position, account, stop_loss_target)
+            take_side_prob = _position_target_probability(open_position, account, take_profit_target)
+
             payload['advanced_entry_line'] = float(entry_yes)
             payload['advanced_breakeven_line'] = float(breakeven_yes)
+            payload['advanced_stop_loss_line'] = float(_yes_equivalent(stop_side_prob, open_position.side))
+            payload['advanced_take_profit_line'] = float(_yes_equivalent(take_side_prob, open_position.side))
 
     expected_interval = int(os.getenv('SIMULATOR_EXPECTED_INTERVAL_SECONDS', '300'))
     stale_after = timedelta(seconds=max(60, expected_interval * 2))
@@ -285,6 +341,7 @@ class DashboardDataView(View):
     def get(self, request):
         try:
             market_symbol = request.GET.get('market_symbol', '').strip()
-            return JsonResponse(_build_dashboard_payload(selected_market_symbol=market_symbol))
+            timeframe = request.GET.get('timeframe', '1h').strip().lower()
+            return JsonResponse(_build_dashboard_payload(selected_market_symbol=market_symbol, selected_timeframe=timeframe))
         except OperationalError:
             return JsonResponse({'simulator_ready': False, 'error': 'db_not_ready'})
