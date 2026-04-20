@@ -9,10 +9,69 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
-from simulator.models import PerformanceSnapshot, Position, SimulationAccount, SimulationTrade
+from simulator.models import Market, MarketPrediction, PerformanceSnapshot, Position, SimulationAccount, SimulationTrade
 
 
-def _build_dashboard_payload() -> dict:
+def _to_epoch_ms(value) -> int:
+    return int(timezone.localtime(value).timestamp() * 1000)
+
+
+def _bucket_timestamp(value, minutes: int = 5):
+    local = timezone.localtime(value)
+    minute = (local.minute // minutes) * minutes
+    return local.replace(minute=minute, second=0, microsecond=0)
+
+
+def _build_candles(predictions: list[MarketPrediction], bucket_minutes: int = 5) -> list[dict]:
+    grouped: dict = {}
+    for pred in predictions:
+        bucket = _bucket_timestamp(pred.created_at, minutes=bucket_minutes)
+        price = float(pred.probability_yes)
+        if bucket not in grouped:
+            grouped[bucket] = {
+                'o': price,
+                'h': price,
+                'l': price,
+                'c': price,
+            }
+        else:
+            grouped[bucket]['h'] = max(grouped[bucket]['h'], price)
+            grouped[bucket]['l'] = min(grouped[bucket]['l'], price)
+            grouped[bucket]['c'] = price
+
+    candles = []
+    for bucket in sorted(grouped.keys()):
+        item = grouped[bucket]
+        candles.append(
+            {
+                'x': _to_epoch_ms(bucket),
+                'y': [item['o'], item['h'], item['l'], item['c']],
+            }
+        )
+    return candles
+
+
+def _position_break_even_probability(position: Position, account: SimulationAccount) -> Decimal:
+    qty = Decimal(position.quantity_shares)
+    if qty <= Decimal('0'):
+        return Decimal(position.entry_prob)
+
+    denominator = Decimal('1.0') - Decimal(account.fee_rate)
+    if denominator <= Decimal('0'):
+        return Decimal(position.entry_prob)
+
+    proceeds = (Decimal(position.size_usd) + Decimal(position.fee_open)) / denominator
+    close_prob = proceeds / qty
+    return max(Decimal('0.01'), min(Decimal('0.99'), close_prob))
+
+
+def _yes_equivalent(probability: Decimal, side: str) -> Decimal:
+    if side == Position.SIDE_NO:
+        return max(Decimal('0.01'), min(Decimal('0.99'), Decimal('1.0') - Decimal(probability)))
+    return max(Decimal('0.01'), min(Decimal('0.99'), Decimal(probability)))
+
+
+def _build_dashboard_payload(selected_market_symbol: str | None = None) -> dict:
     payload = {'simulator_ready': False}
     account = SimulationAccount.objects.filter(is_active=True).order_by('created_at').first()
     if not account:
@@ -94,8 +153,91 @@ def _build_dashboard_payload() -> dict:
             'open_positions': open_positions,
             'recent_trades': recent_trades,
             'updated_at': timezone.localtime(timezone.now()).strftime('%H:%M:%S'),
+            'advanced_market_options': [],
+            'advanced_selected_symbol': '',
+            'advanced_market_name': '',
+            'advanced_candles': [],
+            'advanced_markers': [],
+            'advanced_entry_line': None,
+            'advanced_breakeven_line': None,
         }
     )
+
+    markets_for_selector = []
+    seen_symbols = set()
+    for position in open_positions_qs[:20]:
+        if position.market.symbol in seen_symbols:
+            continue
+        seen_symbols.add(position.market.symbol)
+        markets_for_selector.append({'symbol': position.market.symbol, 'name': position.market.name})
+
+    recent_markets = (
+        SimulationTrade.objects.filter(account=account)
+        .select_related('market')
+        .order_by('-executed_at')[:40]
+    )
+    for trade in recent_markets:
+        if trade.market.symbol in seen_symbols:
+            continue
+        seen_symbols.add(trade.market.symbol)
+        markets_for_selector.append({'symbol': trade.market.symbol, 'name': trade.market.name})
+
+    focus_symbol = (selected_market_symbol or '').strip()
+    if not focus_symbol and markets_for_selector:
+        focus_symbol = markets_for_selector[0]['symbol']
+
+    payload['advanced_market_options'] = markets_for_selector[:16]
+
+    if focus_symbol:
+        focus_market = Market.objects.filter(symbol=focus_symbol).first()
+    else:
+        focus_market = None
+
+    if focus_market:
+        payload['advanced_selected_symbol'] = focus_market.symbol
+        payload['advanced_market_name'] = focus_market.name
+
+        prediction_points = list(
+            MarketPrediction.objects.filter(market=focus_market)
+            .order_by('-created_at')[:800]
+        )
+        prediction_points.reverse()
+        candles = _build_candles(prediction_points, bucket_minutes=5)
+        payload['advanced_candles'] = candles[-120:]
+
+        trade_points = list(
+            SimulationTrade.objects.filter(account=account, market=focus_market)
+            .order_by('-executed_at')[:120]
+        )
+        trade_points.reverse()
+
+        markers = []
+        for trade in trade_points:
+            yes_price = _yes_equivalent(Decimal(trade.probability), trade.side)
+            markers.append(
+                {
+                    'x': _to_epoch_ms(trade.executed_at),
+                    'y': float(yes_price),
+                    'label': (
+                        ('Nákup ' if trade.action.lower() == 'buy' else 'Prodej ')
+                        + ('ANO' if trade.side.lower() == 'yes' else 'NE')
+                    ),
+                    'kind': trade.action.lower(),
+                }
+            )
+        payload['advanced_markers'] = markers[-80:]
+
+        open_position = (
+            Position.objects.filter(account=account, market=focus_market, status=Position.STATUS_OPEN)
+            .order_by('-opened_at')
+            .first()
+        )
+        if open_position:
+            entry_yes = _yes_equivalent(Decimal(open_position.entry_prob), open_position.side)
+            breakeven_side_prob = _position_break_even_probability(open_position, account)
+            breakeven_yes = _yes_equivalent(breakeven_side_prob, open_position.side)
+            payload['advanced_entry_line'] = float(entry_yes)
+            payload['advanced_breakeven_line'] = float(breakeven_yes)
 
     expected_interval = int(os.getenv('SIMULATOR_EXPECTED_INTERVAL_SECONDS', '300'))
     stale_after = timedelta(seconds=max(60, expected_interval * 2))
@@ -142,6 +284,7 @@ class HomePageView(TemplateView):
 class DashboardDataView(View):
     def get(self, request):
         try:
-            return JsonResponse(_build_dashboard_payload())
+            market_symbol = request.GET.get('market_symbol', '').strip()
+            return JsonResponse(_build_dashboard_payload(selected_market_symbol=market_symbol))
         except OperationalError:
             return JsonResponse({'simulator_ready': False, 'error': 'db_not_ready'})

@@ -115,6 +115,37 @@
         .chart-wrap {
             height: 230px;
         }
+        .detail-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.55rem;
+        }
+        .select-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--muted);
+            font-size: 0.82rem;
+        }
+        .market-select {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            color: var(--ink);
+            border-radius: 8px;
+            padding: 0.35rem 0.55rem;
+            min-width: 210px;
+            max-width: 430px;
+        }
+        .detail-wrap {
+            height: 320px;
+        }
+        #detail-chart {
+            width: 100%;
+            height: 100%;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -238,6 +269,21 @@
             </article>
         </section>
 
+        <section class="card">
+            <div class="detail-head">
+                <h2>Detail trhu jako platforma</h2>
+                <div class="select-wrap">
+                    <label for="market-select">Trh:</label>
+                    <select id="market-select" class="market-select"></select>
+                </div>
+            </div>
+            <div class="chart-wrap detail-wrap">
+                <div id="detail-chart"></div>
+                <div id="detail-empty" class="empty" style="display:none;">Pro vybraný trh ještě není dost dat na svíčkový graf.</div>
+            </div>
+            <div class="hint">Svíčky: vývoj pravděpodobnosti ANO. Zelené body jsou nákupy, červené prodeje. Modrá čára = vstup, žlutá = break-even.</div>
+        </section>
+
         <section class="two">
             <article class="card">
                 <h2>Běžící obchody ({{ open_count }})</h2>
@@ -292,7 +338,15 @@
     {{ chart_equity|json_script:"chart-equity" }}
     {{ chart_invested|json_script:"chart-invested" }}
     {{ chart_profit|json_script:"chart-profit" }}
+    {{ advanced_market_options|json_script:"advanced-market-options" }}
+    {{ advanced_selected_symbol|json_script:"advanced-selected-symbol" }}
+    {{ advanced_market_name|json_script:"advanced-market-name" }}
+    {{ advanced_candles|json_script:"advanced-candles" }}
+    {{ advanced_markers|json_script:"advanced-markers" }}
+    {{ advanced_entry_line|json_script:"advanced-entry-line" }}
+    {{ advanced_breakeven_line|json_script:"advanced-breakeven-line" }}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script>
         (function() {
             var root = document.documentElement;
@@ -319,9 +373,20 @@
                 invested: JSON.parse((document.getElementById('chart-invested') || {}).textContent || '[]'),
                 profit: JSON.parse((document.getElementById('chart-profit') || {}).textContent || '[]')
             };
+            var detailState = {
+                options: JSON.parse((document.getElementById('advanced-market-options') || {}).textContent || '[]'),
+                selectedSymbol: JSON.parse((document.getElementById('advanced-selected-symbol') || {}).textContent || '""'),
+                marketName: JSON.parse((document.getElementById('advanced-market-name') || {}).textContent || '""'),
+                candles: JSON.parse((document.getElementById('advanced-candles') || {}).textContent || '[]'),
+                markers: JSON.parse((document.getElementById('advanced-markers') || {}).textContent || '[]'),
+                entryLine: JSON.parse((document.getElementById('advanced-entry-line') || {}).textContent || 'null'),
+                breakevenLine: JSON.parse((document.getElementById('advanced-breakeven-line') || {}).textContent || 'null')
+            };
+            var selectedMarketSymbol = detailState.selectedSymbol || '';
 
             var equityChartRef = null;
             var profitChartRef = null;
+            var detailChartRef = null;
 
             function cssVar(name) {
                 return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -426,6 +491,154 @@
                 });
             }
 
+            function refreshMarketSelect(data) {
+                var select = document.getElementById('market-select');
+                if (!select) {
+                    return;
+                }
+                var options = data.options || [];
+                var desired = selectedMarketSymbol || data.selectedSymbol || '';
+
+                select.innerHTML = '';
+                if (!options.length) {
+                    select.innerHTML = '<option value="">(žádné aktivní trhy)</option>';
+                    select.disabled = true;
+                    selectedMarketSymbol = '';
+                    return;
+                }
+
+                select.disabled = false;
+                options.forEach(function(item) {
+                    var opt = document.createElement('option');
+                    opt.value = item.symbol;
+                    opt.textContent = item.name;
+                    select.appendChild(opt);
+                });
+
+                var exists = options.some(function(item) { return item.symbol === desired; });
+                selectedMarketSymbol = exists ? desired : options[0].symbol;
+                select.value = selectedMarketSymbol;
+            }
+
+            function renderDetailChart(data) {
+                var chartHost = document.getElementById('detail-chart');
+                var empty = document.getElementById('detail-empty');
+                if (!chartHost) {
+                    return;
+                }
+
+                if (detailChartRef) {
+                    detailChartRef.destroy();
+                    detailChartRef = null;
+                }
+
+                if (!data.candles || !data.candles.length || typeof ApexCharts === 'undefined') {
+                    chartHost.style.display = 'none';
+                    if (empty) {
+                        empty.style.display = 'block';
+                    }
+                    return;
+                }
+
+                chartHost.style.display = 'block';
+                if (empty) {
+                    empty.style.display = 'none';
+                }
+
+                var points = (data.markers || []).map(function(marker) {
+                    var isBuy = marker.kind === 'buy';
+                    return {
+                        x: marker.x,
+                        y: marker.y,
+                        marker: {
+                            size: 4,
+                            fillColor: isBuy ? '#62d39a' : '#ff8f78',
+                            strokeColor: isBuy ? '#62d39a' : '#ff8f78'
+                        },
+                        label: {
+                            borderColor: isBuy ? '#62d39a' : '#ff8f78',
+                            style: {
+                                color: '#0b1220',
+                                background: isBuy ? '#62d39a' : '#ff8f78',
+                                fontSize: '10px'
+                            },
+                            text: marker.label
+                        }
+                    };
+                });
+
+                var yAnnotations = [];
+                if (typeof data.entryLine === 'number') {
+                    yAnnotations.push({
+                        y: data.entryLine,
+                        borderColor: '#3fa7ff',
+                        strokeDashArray: 5,
+                        label: {
+                            text: 'Vstup',
+                            style: { color: '#eef3ff', background: '#3fa7ff' }
+                        }
+                    });
+                }
+                if (typeof data.breakevenLine === 'number') {
+                    yAnnotations.push({
+                        y: data.breakevenLine,
+                        borderColor: '#f5c45c',
+                        strokeDashArray: 5,
+                        label: {
+                            text: 'Break-even',
+                            style: { color: '#0b1220', background: '#f5c45c' }
+                        }
+                    });
+                }
+
+                var options = {
+                    chart: {
+                        type: 'candlestick',
+                        height: 320,
+                        background: 'transparent',
+                        toolbar: { show: true },
+                        animations: { enabled: false }
+                    },
+                    theme: { mode: root.getAttribute('data-theme') === 'light' ? 'light' : 'dark' },
+                    title: {
+                        text: data.marketName ? ('Trh: ' + data.marketName) : 'Detail trhu',
+                        align: 'left',
+                        style: { color: cssVar('--ink'), fontSize: '14px' }
+                    },
+                    series: [
+                        {
+                            name: 'Svíčky',
+                            data: data.candles
+                        }
+                    ],
+                    xaxis: {
+                        type: 'datetime',
+                        labels: { style: { colors: cssVar('--muted') } }
+                    },
+                    yaxis: {
+                        min: 0,
+                        max: 1,
+                        labels: {
+                            formatter: function(val) { return Number(val).toFixed(2); },
+                            style: { colors: cssVar('--muted') }
+                        }
+                    },
+                    grid: {
+                        borderColor: cssVar('--line')
+                    },
+                    annotations: {
+                        points: points,
+                        yaxis: yAnnotations
+                    },
+                    tooltip: {
+                        theme: root.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+                    }
+                };
+
+                detailChartRef = new ApexCharts(chartHost, options);
+                detailChartRef.render();
+            }
+
             function setText(id, value, prefix) {
                 var el = document.getElementById(id);
                 if (!el) {
@@ -499,7 +712,11 @@
             }
 
             function pollData() {
-                fetch('/api/dashboard/', { cache: 'no-store' })
+                var url = '/api/dashboard/';
+                if (selectedMarketSymbol) {
+                    url += '?market_symbol=' + encodeURIComponent(selectedMarketSymbol);
+                }
+                fetch(url, { cache: 'no-store' })
                     .then(function(resp) { return resp.json(); })
                     .then(function(data) {
                         if (!data.simulator_ready) {
@@ -511,16 +728,37 @@
                             invested: data.chart_invested || [],
                             profit: data.chart_profit || []
                         };
+                        detailState = {
+                            options: data.advanced_market_options || [],
+                            selectedSymbol: data.advanced_selected_symbol || '',
+                            marketName: data.advanced_market_name || '',
+                            candles: data.advanced_candles || [],
+                            markers: data.advanced_markers || [],
+                            entryLine: data.advanced_entry_line,
+                            breakevenLine: data.advanced_breakeven_line
+                        };
                         refreshKpis(data);
                         refreshTables(data);
                         renderCharts(chartState);
+                        refreshMarketSelect(detailState);
+                        renderDetailChart(detailState);
                     })
                     .catch(function() {
                         // Keep previous values when polling fails.
                     });
             }
 
+            var marketSelect = document.getElementById('market-select');
+            if (marketSelect) {
+                marketSelect.addEventListener('change', function() {
+                    selectedMarketSymbol = marketSelect.value || '';
+                    pollData();
+                });
+            }
+
             renderCharts(chartState);
+            refreshMarketSelect(detailState);
+            renderDetailChart(detailState);
             pollData();
             setInterval(pollData, 5000);
         })();
