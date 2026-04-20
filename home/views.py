@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
-from simulator.models import Market, MarketPrediction, MarketPriceTick, PerformanceSnapshot, Position, SimulationAccount, SimulationTrade
+from simulator.models import Market, MarketPriceTick, PerformanceSnapshot, Position, SimulationAccount, SimulationTrade
 
 
 def _to_epoch_ms(value) -> int:
@@ -22,72 +22,28 @@ def _bucket_timestamp(value, minutes: int = 5):
     return local.replace(minute=minute, second=0, microsecond=0)
 
 
-def _build_candles(predictions: list[MarketPrediction], bucket_minutes: int = 5) -> list[dict]:
-    grouped: dict = {}
-    for pred in predictions:
-        bucket = _bucket_timestamp(pred.created_at, minutes=bucket_minutes)
-        price = float(pred.probability_yes)
-        if bucket not in grouped:
-            grouped[bucket] = {
-                'o': price,
-                'h': price,
-                'l': price,
-                'c': price,
-            }
-        else:
-            grouped[bucket]['h'] = max(grouped[bucket]['h'], price)
-            grouped[bucket]['l'] = min(grouped[bucket]['l'], price)
-            grouped[bucket]['c'] = price
-
-    candles = []
-    for bucket in sorted(grouped.keys()):
-        item = grouped[bucket]
-        candles.append(
-            {
-                'x': _to_epoch_ms(bucket),
-                'y': [item['o'], item['h'], item['l'], item['c']],
-            }
-        )
-    return candles
-
-
-def _build_candles_from_ticks(ticks: list[MarketPriceTick], bucket_minutes: int = 5) -> tuple[list[dict], list[dict]]:
+def _build_line_from_ticks(ticks: list[MarketPriceTick], bucket_minutes: int = 5) -> tuple[list[dict], list[dict]]:
     grouped: dict = {}
     for tick in ticks:
         bucket = _bucket_timestamp(tick.captured_at, minutes=bucket_minutes)
         price = float(tick.price_yes)
         if bucket not in grouped:
             grouped[bucket] = {
-                'o': price,
-                'h': price,
-                'l': price,
-                'c': price,
-                'count': 1,
-                'liquidity_sum': float(tick.liquidity_usd or 0),
+                'close': price,
+                'latest_volume_24h': float(tick.volume_24h_usd or 0),
             }
         else:
-            grouped[bucket]['h'] = max(grouped[bucket]['h'], price)
-            grouped[bucket]['l'] = min(grouped[bucket]['l'], price)
-            grouped[bucket]['c'] = price
-            grouped[bucket]['count'] += 1
-            grouped[bucket]['liquidity_sum'] += float(tick.liquidity_usd or 0)
+            grouped[bucket]['close'] = price
+            grouped[bucket]['latest_volume_24h'] = float(tick.volume_24h_usd or grouped[bucket]['latest_volume_24h'])
 
-    candles = []
+    points = []
     volumes = []
     for bucket in sorted(grouped.keys()):
         item = grouped[bucket]
-        candles.append(
-            {
-                'x': _to_epoch_ms(bucket),
-                'y': [item['o'], item['h'], item['l'], item['c']],
-            }
-        )
+        points.append({'x': _to_epoch_ms(bucket), 'y': round(item['close'], 4)})
+        volumes.append({'x': _to_epoch_ms(bucket), 'y': round(max(0.0, item['latest_volume_24h']), 2)})
 
-        # Proxy volume/activity for prediction-market data where true tick volume may be unavailable.
-        activity = max(1.0, ((item['h'] - item['l']) * 100000.0) + (item['count'] * 6.0) + (item['liquidity_sum'] / 60000.0))
-        volumes.append({'x': _to_epoch_ms(bucket), 'y': round(activity, 2)})
-
-    return candles, volumes
+    return points, volumes
 
 
 def _position_break_even_probability(position: Position, account: SimulationAccount) -> Decimal:
@@ -151,8 +107,9 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None, selected
 
     snapshots = list(
         PerformanceSnapshot.objects.filter(account=account)
-        .order_by('snapshot_date', 'created_at')[:120]
+        .order_by('-snapshot_date', '-created_at')[:120]
     )
+    snapshots.reverse()
     chart_labels = []
     chart_equity = []
     chart_invested = []
@@ -280,15 +237,7 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None, selected
         candles = []
         volume_bars = []
         if tick_points:
-            candles, volume_bars = _build_candles_from_ticks(tick_points, bucket_minutes=tf_cfg['bucket'])
-        else:
-            prediction_points = list(
-                MarketPrediction.objects.filter(market=focus_market, created_at__gte=since_dt)
-                .order_by('-created_at')[:1200]
-            )
-            prediction_points.reverse()
-            candles = _build_candles(prediction_points, bucket_minutes=tf_cfg['bucket'])
-            volume_bars = [{'x': c['x'], 'y': 1.0} for c in candles]
+            candles, volume_bars = _build_line_from_ticks(tick_points, bucket_minutes=tf_cfg['bucket'])
 
         payload['advanced_candles'] = candles[-tf_cfg['max_points']:]
         payload['advanced_volume'] = volume_bars[-tf_cfg['max_points']:]

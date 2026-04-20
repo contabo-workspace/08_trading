@@ -292,7 +292,7 @@
                 <div id="detail-chart"></div>
                 <div id="detail-empty" class="empty" style="display:none;">Pro vybraný trh ještě není dost dat na svíčkový graf.</div>
             </div>
-            <div class="hint">Svíčky: vývoj pravděpodobnosti ANO. Zelené body jsou nákupy, červené prodeje. Modrá čára = vstup, žlutá = break-even.</div>
+                <div class="hint">Pravděpodobnost ANO v čase. Zelené body jsou nákupy, červené prodeje. Modrá čára = vstup, žlutá = break-even.</div>
             <div class="table-wrap detail-trades">
                 <table>
                     <thead><tr><th>Čas</th><th>Akce</th><th>Strana</th><th>Cena ANO</th><th>Objem</th><th>Poplatek</th></tr></thead>
@@ -600,16 +600,12 @@
 
                 if (!data.candles || !data.candles.length || typeof ApexCharts === 'undefined') {
                     chartHost.style.display = 'none';
-                    if (empty) {
-                        empty.style.display = 'block';
-                    }
+                    if (empty) { empty.style.display = 'block'; }
                     return;
                 }
 
                 chartHost.style.display = 'block';
-                if (empty) {
-                    empty.style.display = 'none';
-                }
+                if (empty) { empty.style.display = 'none'; }
 
                 var points = (data.markers || []).map(function(marker) {
                     var isBuy = marker.kind === 'buy';
@@ -617,17 +613,13 @@
                         x: marker.x,
                         y: marker.y,
                         marker: {
-                            size: 4,
+                            size: 5,
                             fillColor: isBuy ? '#62d39a' : '#ff8f78',
                             strokeColor: isBuy ? '#62d39a' : '#ff8f78'
                         },
                         label: {
                             borderColor: isBuy ? '#62d39a' : '#ff8f78',
-                            style: {
-                                color: '#0b1220',
-                                background: isBuy ? '#62d39a' : '#ff8f78',
-                                fontSize: '10px'
-                            },
+                            style: { color: '#0b1220', background: isBuy ? '#62d39a' : '#ff8f78', fontSize: '10px' },
                             text: marker.label
                         }
                     };
@@ -635,93 +627,55 @@
 
                 var yAnnotations = [];
                 if (typeof data.entryLine === 'number') {
-                    yAnnotations.push({
-                        y: data.entryLine,
-                        borderColor: '#3fa7ff',
-                        strokeDashArray: 5,
-                        label: {
-                            text: 'Vstup',
-                            style: { color: '#eef3ff', background: '#3fa7ff' }
-                        }
-                    });
+                    yAnnotations.push({ y: data.entryLine, borderColor: '#3fa7ff', strokeDashArray: 5,
+                        label: { text: 'Vstup', style: { color: '#eef3ff', background: '#3fa7ff' } } });
                 }
                 if (typeof data.breakevenLine === 'number') {
-                    yAnnotations.push({
-                        y: data.breakevenLine,
-                        borderColor: '#f5c45c',
-                        strokeDashArray: 5,
-                        label: {
-                            text: 'Break-even',
-                            style: { color: '#0b1220', background: '#f5c45c' }
-                        }
-                    });
+                    yAnnotations.push({ y: data.breakevenLine, borderColor: '#f5c45c', strokeDashArray: 5,
+                        label: { text: 'Break-even', style: { color: '#0b1220', background: '#f5c45c' } } });
                 }
                 if (typeof data.stopLossLine === 'number') {
-                    yAnnotations.push({
-                        y: data.stopLossLine,
-                        borderColor: '#ff8f78',
-                        strokeDashArray: 4,
-                        label: {
-                            text: 'Stop-loss',
-                            style: { color: '#0b1220', background: '#ff8f78' }
-                        }
-                    });
+                    yAnnotations.push({ y: data.stopLossLine, borderColor: '#ff8f78', strokeDashArray: 4,
+                        label: { text: 'Stop-loss', style: { color: '#0b1220', background: '#ff8f78' } } });
                 }
                 if (typeof data.takeProfitLine === 'number') {
-                    yAnnotations.push({
-                        y: data.takeProfitLine,
-                        borderColor: '#62d39a',
-                        strokeDashArray: 4,
-                        label: {
-                            text: 'Take-profit',
-                            style: { color: '#0b1220', background: '#62d39a' }
-                        }
-                    });
+                    yAnnotations.push({ y: data.takeProfitLine, borderColor: '#62d39a', strokeDashArray: 4,
+                        label: { text: 'Take-profit', style: { color: '#0b1220', background: '#62d39a' } } });
                 }
 
-                var yValues = [];
-                data.candles.forEach(function(c) {
-                    if (c && c.y && c.y.length === 4) {
-                        yValues.push(Number(c.y[1]));
-                        yValues.push(Number(c.y[2]));
-                    }
-                });
+                var yValues = data.candles.map(function(c) { return Number(c.y); });
                 if (typeof data.entryLine === 'number') { yValues.push(data.entryLine); }
                 if (typeof data.breakevenLine === 'number') { yValues.push(data.breakevenLine); }
                 if (typeof data.stopLossLine === 'number') { yValues.push(data.stopLossLine); }
                 if (typeof data.takeProfitLine === 'number') { yValues.push(data.takeProfitLine); }
 
-                var yMin = 0;
-                var yMax = 1;
+                var yMin = 0, yMax = 1;
                 if (yValues.length) {
                     var minVal = Math.min.apply(null, yValues);
                     var maxVal = Math.max.apply(null, yValues);
-                    var span = Math.max(0.01, maxVal - minVal);
-                    yMin = Math.max(0, minVal - span * 0.25);
-                    yMax = Math.min(1, maxVal + span * 0.25);
+                    var span = Math.max(0.02, maxVal - minVal);
+                    yMin = Math.max(0, minVal - span * 0.3);
+                    yMax = Math.min(1, maxVal + span * 0.3);
                 }
 
                 var options = {
                     chart: {
-                        type: 'candlestick',
+                        type: 'area',
                         height: 320,
                         background: 'transparent',
                         toolbar: { show: true },
                         animations: { enabled: false }
                     },
-                    plotOptions: {
-                        candlestick: {
-                            colors: {
-                                upward: '#62d39a',
-                                downward: '#ff8f78'
-                            },
-                            wick: {
-                                useFillColor: true
-                            }
+                    stroke: { curve: 'smooth', width: [2, 1] },
+                    fill: {
+                        type: ['gradient', 'solid'],
+                        gradient: {
+                            shadeIntensity: 1,
+                            opacityFrom: 0.25,
+                            opacityTo: 0.02,
+                            stops: [0, 100]
                         },
-                        bar: {
-                            columnWidth: '55%'
-                        }
+                        opacity: [1, 0.4]
                     },
                     theme: { mode: root.getAttribute('data-theme') === 'light' ? 'light' : 'dark' },
                     title: {
@@ -730,46 +684,35 @@
                         style: { color: cssVar('--ink'), fontSize: '14px' }
                     },
                     series: [
-                        {
-                            name: 'Svíčky',
-                            data: data.candles
-                        },
-                        {
-                            name: 'Aktivita',
-                            type: 'bar',
-                            data: data.volume || []
-                        }
+                        { name: 'Pravděpodobnost ANO', type: 'area', data: data.candles },
+                        { name: 'Aktivita (24h vol)', type: 'bar', data: data.volume || [] }
                     ],
                     xaxis: {
                         type: 'datetime',
                         labels: { style: { colors: cssVar('--muted') } }
                     },
-                    yaxis: {
+                    yaxis: [
                         {
-                            min: yMin,
-                            max: yMax,
-                            seriesName: 'Svíčky',
+                            min: yMin, max: yMax,
+                            seriesName: 'Pravděpodobnost ANO',
                             labels: {
-                                formatter: function(val) { return Number(val).toFixed(3); },
+                                formatter: function(val) { return (Number(val) * 100).toFixed(1) + '%'; },
                                 style: { colors: cssVar('--muted') }
                             }
                         },
-                        {
-                            seriesName: 'Aktivita',
-                            opposite: true,
-                            show: false,
-                            min: 0
-                        }
+                        { seriesName: 'Aktivita (24h vol)', opposite: true, show: false, min: 0 }
                     ],
-                    grid: {
-                        borderColor: cssVar('--line')
-                    },
-                    annotations: {
-                        points: points,
-                        yaxis: yAnnotations
-                    },
+                    colors: ['#3fa7ff', '#f5c45c'],
+                    grid: { borderColor: cssVar('--line') },
+                    annotations: { points: points, yaxis: yAnnotations },
                     tooltip: {
-                        theme: root.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+                        theme: root.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+                        y: {
+                            formatter: function(val, opts) {
+                                if (opts.seriesIndex === 0) { return (Number(val) * 100).toFixed(2) + '%'; }
+                                return '$' + Number(val).toLocaleString();
+                            }
+                        }
                     }
                 };
 
@@ -879,6 +822,7 @@
                             marketName: data.advanced_market_name || '',
                             candles: data.advanced_candles || [],
                             markers: data.advanced_markers || [],
+                            volume: data.advanced_volume || [],
                             entryLine: data.advanced_entry_line,
                             breakevenLine: data.advanced_breakeven_line,
                             stopLossLine: data.advanced_stop_loss_line,

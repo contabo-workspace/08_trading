@@ -30,7 +30,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 'Simulator cycle done | '
-                f"markets={result['markets_synced']} signals={result['signals']} predictions={result['predictions']} "
-                f"opened={result['opened']} closed={result['closed']}"
+                f"markets={result['markets_synced']} clob={result['clob_updated']} ticks={result['ticks_saved']} "
+                f"predictions={result['predictions']} opened={result['opened']} closed={result['closed']}"
             )
         )

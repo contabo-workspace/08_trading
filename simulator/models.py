@@ -14,6 +14,7 @@ class Market(models.Model):
 
     symbol = models.CharField(max_length=80, unique=True)
     external_id = models.CharField(max_length=80, unique=True, null=True, blank=True)
+    clob_token_id = models.CharField(max_length=80, blank=True, default='')
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=SOURCE_SYNTHETIC)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
