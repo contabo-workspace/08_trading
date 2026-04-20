@@ -384,13 +384,22 @@ def _market_relevance_score(market_name: str, headline: str) -> Decimal:
     return Decimal(overlap) / Decimal(max(1, min(len(market_tokens), 8)))
 
 
+def _market_implied_fallback_score(market: Market) -> Decimal:
+    price = Decimal(market.last_price_yes or DECIMAL_HALF)
+    distance_from_mid = DECIMAL_HALF - price
+    liquidity = max(Decimal('1.00'), Decimal(market.liquidity_usd or DECIMAL_ZERO))
+    spread = max(DECIMAL_ZERO, _market_spread_for_side(market, Position.SIDE_YES))
+
+    liquidity_factor = min(Decimal('1.25'), Decimal('0.65') + (liquidity / Decimal('50000')))
+    spread_penalty = max(Decimal('0.35'), Decimal('1.00') - (spread / Decimal('0.08')))
+
+    return distance_from_mid * Decimal('0.45') * liquidity_factor * spread_penalty
+
+
 def generate_predictions(window_hours: int = 24) -> int:
     since = timezone.now() - timedelta(hours=window_hours)
     recent_signals = list(WorldSignal.objects.filter(published_at__gte=since)[:400])
-    if not recent_signals:
-        return 0
-
-    global_score = _weighted_signal_score(recent_signals)
+    global_score = _weighted_signal_score(recent_signals) if recent_signals else Decimal('0')
 
     created = 0
     markets = Market.objects.filter(is_active=True, source=Market.SOURCE_POLYMARKET).order_by('-liquidity_usd')[:120]
@@ -409,17 +418,18 @@ def generate_predictions(window_hours: int = 24) -> int:
 
         local_signal_multiplier = Decimal(os.getenv('SIMULATOR_LOCAL_SIGNAL_MULTIPLIER', '0.14'))
         global_signal_multiplier = Decimal(os.getenv('SIMULATOR_GLOBAL_SIGNAL_MULTIPLIER', '0.08'))
+        fallback_score = _market_implied_fallback_score(market)
 
         if weight_sum > 0:
             local_score = weighted / weight_sum
             confidence = min(Decimal('92.00'), Decimal('42.00') + Decimal(relevant_count * 2))
             reasoning = f'Relevance-weighted sentiment from {relevant_count} matching world signals.'
-            price_shift = local_score * local_signal_multiplier
+            price_shift = (local_score * local_signal_multiplier) + (fallback_score * Decimal('0.35'))
         else:
-            local_score = global_score * Decimal('0.35')
-            confidence = Decimal('35.00')
-            reasoning = 'No strong direct signal match; fallback to global macro sentiment.'
-            price_shift = local_score * global_signal_multiplier
+            local_score = (global_score * Decimal('0.35')) + fallback_score
+            confidence = Decimal('35.00') + min(Decimal('18.00'), abs(fallback_score) * Decimal('120'))
+            reasoning = 'No strong direct signal match; fallback to macro sentiment and market-implied mean reversion.'
+            price_shift = (global_score * global_signal_multiplier) + (fallback_score * Decimal('0.12'))
 
         prob_yes = _bounded_price(Decimal(market.last_price_yes) + price_shift)
 
