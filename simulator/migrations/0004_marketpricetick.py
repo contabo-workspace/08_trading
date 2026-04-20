@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 'ordering': ['-captured_at'],
-                'indexes': [models.Index(fields=['market', '-captured_at'], name='simulator_ma_market__396bf0_idx')],
+                'indexes': [models.Index(fields=['market', '-captured_at'], name='sim_mkt_tick_mkt_cap_idx')],
             },
         ),
     ]
