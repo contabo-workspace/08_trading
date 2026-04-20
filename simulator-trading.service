@@ -1,0 +1,17 @@
+[Unit]
+Description=Paper-trading simulator loop for 08_trading
+After=network.target
+
+[Service]
+User=honza
+Group=www-data
+WorkingDirectory=/srv/apps/08_trading
+EnvironmentFile=-/srv/apps/08_trading/.env
+Environment="DJANGO_SETTINGS_MODULE=_conf.settings.prod"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/srv/apps/08_trading/.venv/bin/python manage.py run_simulator --loop --interval 60 --threshold 0.02
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
