@@ -105,7 +105,7 @@ class MarketPriceTick(models.Model):
 
     class Meta:
         ordering = ['-captured_at']
-        indexes = [models.Index(fields=['market', '-captured_at'])]
+        indexes = [models.Index(fields=['market', '-captured_at'], name='simulator_ma_market__396bf0_idx')]
 
     def __str__(self) -> str:
         return f"{self.market.symbol} {self.price_yes} ({self.captured_at:%Y-%m-%d %H:%M:%S})"
