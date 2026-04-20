@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule the 08_trading paper-trading simulator
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=simulator-trading.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
