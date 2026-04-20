@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
-from simulator.models import Market, MarketPrediction, PerformanceSnapshot, Position, SimulationAccount, SimulationTrade
+from simulator.models import Market, MarketPrediction, MarketPriceTick, PerformanceSnapshot, Position, SimulationAccount, SimulationTrade
 
 
 def _to_epoch_ms(value) -> int:
@@ -49,6 +49,45 @@ def _build_candles(predictions: list[MarketPrediction], bucket_minutes: int = 5)
             }
         )
     return candles
+
+
+def _build_candles_from_ticks(ticks: list[MarketPriceTick], bucket_minutes: int = 5) -> tuple[list[dict], list[dict]]:
+    grouped: dict = {}
+    for tick in ticks:
+        bucket = _bucket_timestamp(tick.captured_at, minutes=bucket_minutes)
+        price = float(tick.price_yes)
+        if bucket not in grouped:
+            grouped[bucket] = {
+                'o': price,
+                'h': price,
+                'l': price,
+                'c': price,
+                'count': 1,
+                'liquidity_sum': float(tick.liquidity_usd or 0),
+            }
+        else:
+            grouped[bucket]['h'] = max(grouped[bucket]['h'], price)
+            grouped[bucket]['l'] = min(grouped[bucket]['l'], price)
+            grouped[bucket]['c'] = price
+            grouped[bucket]['count'] += 1
+            grouped[bucket]['liquidity_sum'] += float(tick.liquidity_usd or 0)
+
+    candles = []
+    volumes = []
+    for bucket in sorted(grouped.keys()):
+        item = grouped[bucket]
+        candles.append(
+            {
+                'x': _to_epoch_ms(bucket),
+                'y': [item['o'], item['h'], item['l'], item['c']],
+            }
+        )
+
+        # Proxy volume/activity for prediction-market data where true tick volume may be unavailable.
+        activity = max(1.0, ((item['h'] - item['l']) * 100000.0) + (item['count'] * 6.0) + (item['liquidity_sum'] / 60000.0))
+        volumes.append({'x': _to_epoch_ms(bucket), 'y': round(activity, 2)})
+
+    return candles, volumes
 
 
 def _position_break_even_probability(position: Position, account: SimulationAccount) -> Decimal:
@@ -186,6 +225,7 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None, selected
             'advanced_breakeven_line': None,
             'advanced_stop_loss_line': None,
             'advanced_take_profit_line': None,
+            'advanced_volume': [],
             'advanced_recent_trades': [],
             'advanced_selected_timeframe': selected_timeframe,
             'advanced_timeframes': ['15m', '1h', '4h', '1d'],
@@ -232,13 +272,26 @@ def _build_dashboard_payload(selected_market_symbol: str | None = None, selected
 
         since_dt = timezone.now() - timedelta(hours=tf_cfg['hours'])
 
-        prediction_points = list(
-            MarketPrediction.objects.filter(market=focus_market, created_at__gte=since_dt)
-            .order_by('-created_at')[:800]
+        tick_points = list(
+            MarketPriceTick.objects.filter(market=focus_market, captured_at__gte=since_dt)
+            .order_by('-captured_at')[:5000]
         )
-        prediction_points.reverse()
-        candles = _build_candles(prediction_points, bucket_minutes=tf_cfg['bucket'])
+        tick_points.reverse()
+        candles = []
+        volume_bars = []
+        if tick_points:
+            candles, volume_bars = _build_candles_from_ticks(tick_points, bucket_minutes=tf_cfg['bucket'])
+        else:
+            prediction_points = list(
+                MarketPrediction.objects.filter(market=focus_market, created_at__gte=since_dt)
+                .order_by('-created_at')[:1200]
+            )
+            prediction_points.reverse()
+            candles = _build_candles(prediction_points, bucket_minutes=tf_cfg['bucket'])
+            volume_bars = [{'x': c['x'], 'y': 1.0} for c in candles]
+
         payload['advanced_candles'] = candles[-tf_cfg['max_points']:]
+        payload['advanced_volume'] = volume_bars[-tf_cfg['max_points']:]
 
         trade_points = list(
             SimulationTrade.objects.filter(account=account, market=focus_market)

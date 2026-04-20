@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from .models import (
     Market,
+    MarketPriceTick,
     MarketPrediction,
     PerformanceSnapshot,
     Position,
@@ -686,6 +687,36 @@ def _snapshot_account(account: SimulationAccount) -> None:
     )
 
 
+def snapshot_market_ticks(limit: int = 220) -> int:
+    tracked_markets = list(
+        Market.objects.filter(source=Market.SOURCE_POLYMARKET, is_active=True)
+        .order_by('-liquidity_usd')[:limit]
+    )
+    if not tracked_markets:
+        return 0
+
+    now = timezone.now()
+    ticks = []
+    for market in tracked_markets:
+        ticks.append(
+            MarketPriceTick(
+                market=market,
+                captured_at=now,
+                price_yes=_safe_decimal(Decimal(market.last_price_yes)),
+                yes_bid=_safe_decimal(Decimal(market.yes_bid), '0.0001') if market.yes_bid is not None else None,
+                yes_ask=_safe_decimal(Decimal(market.yes_ask), '0.0001') if market.yes_ask is not None else None,
+                liquidity_usd=_safe_decimal(Decimal(market.liquidity_usd), '0.01'),
+                volume_24h_usd=_safe_decimal(Decimal(market.volume_24h_usd), '0.01'),
+            )
+        )
+    MarketPriceTick.objects.bulk_create(ticks, batch_size=200)
+
+    max_age_days = int(os.getenv('SIMULATOR_TICK_RETENTION_DAYS', '21'))
+    retention_from = now - timedelta(days=max(1, max_age_days))
+    MarketPriceTick.objects.filter(captured_at__lt=retention_from).delete()
+    return len(ticks)
+
+
 def bootstrap_default_account() -> SimulationAccount:
     account, _ = SimulationAccount.objects.get_or_create(
         name='default-paper-account',
@@ -705,6 +736,7 @@ def reset_account_state(account: SimulationAccount) -> None:
     account.positions.all().delete()
     account.trades.all().delete()
     account.snapshots.all().delete()
+    MarketPriceTick.objects.all().delete()
     account.balance_cash = account.starting_balance
     account.balance_reserved = DECIMAL_ZERO
     account.save(update_fields=['balance_cash', 'balance_reserved'])
@@ -713,11 +745,13 @@ def reset_account_state(account: SimulationAccount) -> None:
 def run_once(threshold: Decimal = DEFAULT_EDGE_THRESHOLD) -> dict[str, int]:
     account = bootstrap_default_account()
     markets_synced = sync_polymarket_markets(limit=250)
+    ticks_saved = snapshot_market_ticks(limit=220)
     created_signals = ingest_world_signals()
     created_predictions = generate_predictions(window_hours=36)
     trade_result = execute_trading_cycle(account, threshold=threshold)
     return {
         'markets_synced': markets_synced,
+        'ticks_saved': ticks_saved,
         'signals': created_signals,
         'predictions': created_predictions,
         'opened': trade_result['opened'],

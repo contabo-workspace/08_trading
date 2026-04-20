@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Market,
+    MarketPriceTick,
     MarketPrediction,
     PerformanceSnapshot,
     Position,
@@ -47,6 +48,13 @@ class SimulationAccountAdmin(admin.ModelAdmin):
 class MarketPredictionAdmin(admin.ModelAdmin):
     list_display = ('market', 'probability_yes', 'confidence', 'created_at')
     list_filter = ('market',)
+
+
+@admin.register(MarketPriceTick)
+class MarketPriceTickAdmin(admin.ModelAdmin):
+    list_display = ('market', 'price_yes', 'yes_bid', 'yes_ask', 'liquidity_usd', 'captured_at')
+    list_filter = ('market',)
+    search_fields = ('market__symbol', 'market__name')
 
 
 @admin.register(Position)

@@ -362,6 +362,7 @@
     {{ advanced_market_name|json_script:"advanced-market-name" }}
     {{ advanced_candles|json_script:"advanced-candles" }}
     {{ advanced_markers|json_script:"advanced-markers" }}
+    {{ advanced_volume|json_script:"advanced-volume" }}
     {{ advanced_entry_line|json_script:"advanced-entry-line" }}
     {{ advanced_breakeven_line|json_script:"advanced-breakeven-line" }}
     {{ advanced_stop_loss_line|json_script:"advanced-stop-loss-line" }}
@@ -404,6 +405,7 @@
                 marketName: JSON.parse((document.getElementById('advanced-market-name') || {}).textContent || '""'),
                 candles: JSON.parse((document.getElementById('advanced-candles') || {}).textContent || '[]'),
                 markers: JSON.parse((document.getElementById('advanced-markers') || {}).textContent || '[]'),
+                volume: JSON.parse((document.getElementById('advanced-volume') || {}).textContent || '[]'),
                 entryLine: JSON.parse((document.getElementById('advanced-entry-line') || {}).textContent || 'null'),
                 breakevenLine: JSON.parse((document.getElementById('advanced-breakeven-line') || {}).textContent || 'null'),
                 stopLossLine: JSON.parse((document.getElementById('advanced-stop-loss-line') || {}).textContent || 'null'),
@@ -707,6 +709,20 @@
                         toolbar: { show: true },
                         animations: { enabled: false }
                     },
+                    plotOptions: {
+                        candlestick: {
+                            colors: {
+                                upward: '#62d39a',
+                                downward: '#ff8f78'
+                            },
+                            wick: {
+                                useFillColor: true
+                            }
+                        },
+                        bar: {
+                            columnWidth: '55%'
+                        }
+                    },
                     theme: { mode: root.getAttribute('data-theme') === 'light' ? 'light' : 'dark' },
                     title: {
                         text: data.marketName ? ('Trh: ' + data.marketName) : 'Detail trhu',
@@ -717,6 +733,11 @@
                         {
                             name: 'Svíčky',
                             data: data.candles
+                        },
+                        {
+                            name: 'Aktivita',
+                            type: 'bar',
+                            data: data.volume || []
                         }
                     ],
                     xaxis: {
@@ -724,13 +745,22 @@
                         labels: { style: { colors: cssVar('--muted') } }
                     },
                     yaxis: {
-                        min: yMin,
-                        max: yMax,
-                        labels: {
-                            formatter: function(val) { return Number(val).toFixed(2); },
-                            style: { colors: cssVar('--muted') }
+                        {
+                            min: yMin,
+                            max: yMax,
+                            seriesName: 'Svíčky',
+                            labels: {
+                                formatter: function(val) { return Number(val).toFixed(3); },
+                                style: { colors: cssVar('--muted') }
+                            }
+                        },
+                        {
+                            seriesName: 'Aktivita',
+                            opposite: true,
+                            show: false,
+                            min: 0
                         }
-                    },
+                    ],
                     grid: {
                         borderColor: cssVar('--line')
                     },

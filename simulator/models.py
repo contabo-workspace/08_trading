@@ -94,6 +94,23 @@ class MarketPrediction(models.Model):
         return f"{self.market.symbol}: {self.probability_yes} ({self.created_at:%Y-%m-%d %H:%M})"
 
 
+class MarketPriceTick(models.Model):
+    market = models.ForeignKey(Market, on_delete=models.CASCADE, related_name='price_ticks')
+    captured_at = models.DateTimeField(default=timezone.now, db_index=True)
+    price_yes = models.DecimalField(max_digits=6, decimal_places=4)
+    yes_bid = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
+    yes_ask = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
+    liquidity_usd = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    volume_24h_usd = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+
+    class Meta:
+        ordering = ['-captured_at']
+        indexes = [models.Index(fields=['market', '-captured_at'])]
+
+    def __str__(self) -> str:
+        return f"{self.market.symbol} {self.price_yes} ({self.captured_at:%Y-%m-%d %H:%M:%S})"
+
+
 class Position(models.Model):
     SIDE_YES = 'yes'
     SIDE_NO = 'no'
