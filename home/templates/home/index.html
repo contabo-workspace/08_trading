@@ -3,81 +3,527 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>trading</title>
+    <title>Přehled simulace</title>
     <style>
+        :root {
+            --bg: #0b1220;
+            --panel: #131d30;
+            --ink: #eef3ff;
+            --muted: #9badc8;
+            --line: #2a3b57;
+            --accent: #3fa7ff;
+            --ok: #62d39a;
+            --warn: #ff8f78;
+            --gold: #f5c45c;
+        }
+        [data-theme="light"] {
+            --bg: #f2f6fd;
+            --panel: #ffffff;
+            --ink: #10233a;
+            --muted: #5c728f;
+            --line: #d6e0ed;
+            --accent: #1b7be0;
+            --ok: #197d4d;
+            --warn: #b84c31;
+            --gold: #9b6e00;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: #e2e8f0;
+            font-family: Segoe UI, Tahoma, sans-serif;
+            background: var(--bg);
+            color: var(--ink);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            padding: 1rem;
         }
         .container {
-            text-align: center;
-            max-width: 600px;
-            padding: 3rem 2rem;
+            max-width: 980px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+        }
+        .top {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 0.9rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.7rem;
         }
         h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(90deg, #38bdf8, #818cf8);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
-        }
-        .subtitle {
-            color: #94a3b8;
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
+            font-size: 1.2rem;
         }
         .status {
-            display: inline-block;
-            background: #065f46;
-            color: #6ee7b7;
-            padding: 0.4rem 1rem;
-            border-radius: 2rem;
             font-size: 0.9rem;
-            margin-bottom: 2rem;
+            color: var(--muted);
         }
-        .links {
+        .status b {
+            color: var(--accent);
+        }
+        .btn-theme {
+            border: 1px solid var(--line);
+            background: transparent;
+            color: var(--ink);
+            border-radius: 8px;
+            padding: 0.45rem 0.7rem;
+            cursor: pointer;
+        }
+        .run-ok { color: var(--ok); font-weight: 700; }
+        .run-warn { color: var(--warn); font-weight: 700; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.8rem;
+        }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 0.8rem;
+        }
+        .k-label {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-bottom: 0.3rem;
+        }
+        .k-value {
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+        .k-sub {
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin-top: 0.25rem;
+        }
+        .k-cash { color: var(--ok); }
+        .k-invested { color: var(--gold); }
+        .k-equity { color: var(--accent); }
+        .k-profit.pos { color: var(--ok); }
+        .k-profit.neg { color: var(--warn); }
+        .k-run { color: var(--accent); }
+        .table-wrap {
+            overflow-x: auto;
+        }
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+        }
+        .chart-wrap {
+            height: 230px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        th, td {
+            text-align: left;
+            border-bottom: 1px solid var(--line);
+            padding: 0.45rem 0.3rem;
+        }
+        th {
+            color: var(--accent);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+        }
+        .help {
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+        .two {
             display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
+            gap: 0.8rem;
         }
-        .links a {
-            display: inline-block;
-            padding: 0.8rem 1.5rem;
-            border-radius: 0.5rem;
-            text-decoration: none;
-            font-weight: 600;
-            transition: transform 0.15s, box-shadow 0.15s;
+        .two .card {
+            width: 50%;
         }
-        .links a:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        .btn-primary { background: #3b82f6; color: #fff; }
-        .btn-secondary { background: #334155; color: #e2e8f0; border: 1px solid #475569; }
-        .info {
-            margin-top: 2.5rem;
-            color: #64748b;
-            font-size: 0.85rem;
+        .hint {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-top: 0.35rem;
+        }
+        .empty {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .delta {
+            font-size: 0.86rem;
+            color: var(--muted);
+        }
+        .delta.pos { color: var(--ok); }
+        .delta.neg { color: var(--warn); }
+        .delta.flat { color: var(--gold); }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .charts { grid-template-columns: 1fr; }
+            .two { flex-direction: column; }
+            .two .card { width: 100%; }
+        }
+        @media (max-width: 560px) {
+            .grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>trading</h1>
-        <p class="subtitle">trading.hs-dev.cz</p>
-        <div class="status">&#x2713; Projekt úspěšně nasazen</div>
-        <div class="links">
-            <a href="/admin/" class="btn-primary">Administrace</a>
-            <a href="https://docs.djangoproject.com/" class="btn-secondary" target="_blank">Django dokumentace</a>
-        </div>
-        <p class="info">Tato stránka je součást home appky &mdash; můžete ji upravit v <code>home/templates/home/index.html</code></p>
-    </div>
+    <main class="container">
+        <section class="top">
+            <div>
+                <h1>Jednoduchý přehled simulace</h1>
+                <div class="status">Obnova stránky: <b>automaticky každých 5 sekund</b> | Poslední běh simulátoru: <span id="last-engine-run">{{ last_engine_run_at|default:'-' }}</span> | Stav: <span id="engine-state" class="{% if engine_running %}run-ok{% else %}run-warn{% endif %}">{% if engine_running %}běží{% else %}neběží{% endif %}</span></div>
+            </div>
+            <button id="theme-toggle" class="btn-theme" type="button">Světlý/tmavý režim</button>
+        </section>
+
+        {% if simulator_ready %}
+        <section class="grid">
+            <article class="card">
+                <div class="k-label">Volná hotovost</div>
+                <div class="k-value k-cash" id="cash-free">${{ cash_free }}</div>
+                <div class="k-sub">Peníze připravené na nové obchody.</div>
+            </article>
+            <article class="card">
+                <div class="k-label">Právě zainvestováno</div>
+                <div class="k-value k-invested" id="invested-total">${{ invested_total }}</div>
+                <div class="k-sub">Kolik peněz je právě v běžících obchodech.</div>
+            </article>
+            <article class="card">
+                <div class="k-label">Aktuální hodnota běžících obchodů</div>
+                <div class="k-value k-run" id="running-value">${{ running_value }}</div>
+                <div class="k-sub">Toto číslo se mění s trhem (nahoru/dolů).</div>
+            </article>
+            <article class="card">
+                <div class="k-label">Celkový stav účtu</div>
+                <div class="k-value k-equity" id="equity-value">${{ equity }}</div>
+                <div class="k-sub">Součet hotovosti a běžících obchodů.</div>
+            </article>
+            <article class="card">
+                <div class="k-label">Zisk / ztráta od začátku</div>
+                <div class="k-value k-profit {% if profit_total|floatformat:2|slice:':1' == '-' %}neg{% else %}pos{% endif %}" id="profit-total">${{ profit_total }}</div>
+                <div class="k-sub">Výsledek po poplatcích.</div>
+            </article>
+            <article class="card">
+                <div class="k-label">Změna od posledního běhu</div>
+                <div id="equity-delta" class="delta {% if equity_changed %}{% if equity_delta_last_run|floatformat:2|slice:':1' == '-' %}neg{% else %}pos{% endif %}{% else %}flat{% endif %}">
+                    {% if equity_changed %}
+                    ${{ equity_delta_last_run }}
+                    {% else %}
+                    Beze změny (trh se mezitím téměř nepohnul)
+                    {% endif %}
+                </div>
+                <div class="k-sub">Pomáhá vidět, že se opravdu něco děje nebo neděje.</div>
+            </article>
+        </section>
+
+        <section class="card">
+            <h2>Jak to číst jednoduše</h2>
+            <p class="help">Když roste „Celkový stav účtu“ a zároveň roste „Zisk / ztráta“, simulace je v plusu. Když roste „Právě zainvestováno“, systém má více peněz v běžících obchodech.</p>
+            <p class="help">Grafy níže jsou pomocné. Na začátku může být málo bodů, protože se historie teprve sbírá.</p>
+        </section>
+
+        <section class="charts">
+            <article class="card">
+                <h2>Vývoj hodnoty účtu</h2>
+                <div class="chart-wrap"><canvas id="equity-chart"></canvas></div>
+                <div class="hint">Modrá: celkový stav účtu | Žlutá: právě zainvestováno</div>
+            </article>
+            <article class="card">
+                <h2>Vývoj zisku / ztráty</h2>
+                <div class="chart-wrap"><canvas id="profit-chart"></canvas></div>
+                <div class="hint">Zelená znamená zisk, červená ztrátu.</div>
+            </article>
+        </section>
+
+        <section class="two">
+            <article class="card">
+                <h2>Běžící obchody ({{ open_count }})</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Událost</th><th>Náš odhad</th><th>Vsazeno</th></tr></thead>
+                        <tbody id="open-positions-body">
+                            {% for p in open_positions %}
+                            <tr>
+                                <td>{{ p.market }}</td>
+                                <td>{{ p.side }}</td>
+                                <td>${{ p.size_usd }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="empty">Zatím nejsou žádné běžící obchody.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="hint">Každý řádek je jeden právě běžící obchod.</div>
+            </article>
+            <article class="card">
+                <h2>Poslední kroky systému</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Čas</th><th>Co systém udělal</th><th>Částka</th><th>Poplatek</th></tr></thead>
+                        <tbody id="recent-trades-body">
+                            {% for t in recent_trades %}
+                            <tr>
+                                <td>{{ t.time }}</td>
+                                <td>{{ t.action }}</td>
+                                <td>${{ t.size_usd }}</td>
+                                <td>${{ t.fee_usd }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="empty">Zatím nejsou žádné kroky systému.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="hint">Tady je vidět nákup/prodej a zaplacený poplatek.</div>
+            </article>
+        </section>
+        {% else %}
+        <section class="card">
+            <h2>Simulace ještě neběží</h2>
+            <p class="empty">Spusť run_simulator, aby se přehled naplnil daty.</p>
+        </section>
+        {% endif %}
+    </main>
+    {{ chart_labels|json_script:"chart-labels" }}
+    {{ chart_equity|json_script:"chart-equity" }}
+    {{ chart_invested|json_script:"chart-invested" }}
+    {{ chart_profit|json_script:"chart-profit" }}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script>
+        (function() {
+            var root = document.documentElement;
+            var button = document.getElementById('theme-toggle');
+            var saved = localStorage.getItem('simple_trading_theme');
+            if (saved === 'light') {
+                root.setAttribute('data-theme', 'light');
+            }
+            button.addEventListener('click', function() {
+                var current = root.getAttribute('data-theme');
+                if (current === 'light') {
+                    root.removeAttribute('data-theme');
+                    localStorage.setItem('simple_trading_theme', 'dark');
+                } else {
+                    root.setAttribute('data-theme', 'light');
+                    localStorage.setItem('simple_trading_theme', 'light');
+                }
+                renderCharts(chartState);
+            });
+
+            var chartState = {
+                labels: JSON.parse((document.getElementById('chart-labels') || {}).textContent || '[]'),
+                equity: JSON.parse((document.getElementById('chart-equity') || {}).textContent || '[]'),
+                invested: JSON.parse((document.getElementById('chart-invested') || {}).textContent || '[]'),
+                profit: JSON.parse((document.getElementById('chart-profit') || {}).textContent || '[]')
+            };
+
+            var equityChartRef = null;
+            var profitChartRef = null;
+
+            function cssVar(name) {
+                return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            }
+
+            function baseChartOptions() {
+                return {
+                    animation: false,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: cssVar('--ink') }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: cssVar('--muted'), maxTicksLimit: 6 },
+                            grid: { color: cssVar('--line') }
+                        },
+                        y: {
+                            ticks: { color: cssVar('--muted') },
+                            grid: { color: cssVar('--line') }
+                        }
+                    }
+                };
+            }
+
+            function renderCharts(data) {
+                if (typeof Chart === 'undefined') {
+                    return;
+                }
+                var eqCanvas = document.getElementById('equity-chart');
+                var pfCanvas = document.getElementById('profit-chart');
+                if (!eqCanvas || !pfCanvas || !data.labels.length) {
+                    return;
+                }
+
+                if (equityChartRef) {
+                    equityChartRef.destroy();
+                }
+                if (profitChartRef) {
+                    profitChartRef.destroy();
+                }
+
+                equityChartRef = new Chart(eqCanvas, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [
+                            {
+                                label: 'Celkový stav účtu',
+                                data: data.equity,
+                                borderColor: cssVar('--accent'),
+                                backgroundColor: 'rgba(63, 167, 255, 0.10)',
+                                borderWidth: 2,
+                                pointRadius: 1,
+                                tension: 0.15,
+                                fill: true,
+                            },
+                            {
+                                label: 'Právě zainvestováno',
+                                data: data.invested,
+                                borderColor: cssVar('--gold'),
+                                backgroundColor: 'rgba(245, 196, 92, 0.10)',
+                                borderWidth: 2,
+                                pointRadius: 1,
+                                tension: 0.15,
+                                fill: true,
+                            }
+                        ]
+                    },
+                    options: baseChartOptions()
+                });
+
+                var options2 = baseChartOptions();
+                options2.plugins.legend.display = false;
+
+                profitChartRef = new Chart(pfCanvas, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [
+                            {
+                                label: 'Zisk / ztráta',
+                                data: data.profit,
+                                borderColor: cssVar('--ok'),
+                                backgroundColor: 'rgba(98, 211, 154, 0.10)',
+                                borderWidth: 2,
+                                pointRadius: 1,
+                                tension: 0.15,
+                                fill: true,
+                                segment: {
+                                    borderColor: function(ctx) {
+                                        return (ctx.p0.parsed.y + ctx.p1.parsed.y) / 2 >= 0 ? cssVar('--ok') : cssVar('--warn');
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    options: options2
+                });
+            }
+
+            function setText(id, value, prefix) {
+                var el = document.getElementById(id);
+                if (!el) {
+                    return;
+                }
+                el.textContent = (prefix || '') + value;
+            }
+
+            function refreshTables(data) {
+                var openBody = document.getElementById('open-positions-body');
+                var tradesBody = document.getElementById('recent-trades-body');
+                if (openBody) {
+                    if (!data.open_positions.length) {
+                        openBody.innerHTML = '<tr><td colspan="3" class="empty">Zatím nejsou žádné běžící obchody.</td></tr>';
+                    } else {
+                        openBody.innerHTML = data.open_positions.map(function(p) {
+                            return '<tr><td>' + p.market + '</td><td>' + p.side + '</td><td>$' + p.size_usd + '</td></tr>';
+                        }).join('');
+                    }
+                }
+                if (tradesBody) {
+                    if (!data.recent_trades.length) {
+                        tradesBody.innerHTML = '<tr><td colspan="4" class="empty">Zatím nejsou žádné kroky systému.</td></tr>';
+                    } else {
+                        tradesBody.innerHTML = data.recent_trades.map(function(t) {
+                            return '<tr><td>' + t.time + '</td><td>' + t.action + '</td><td>$' + t.size_usd + '</td><td>$' + t.fee_usd + '</td></tr>';
+                        }).join('');
+                    }
+                }
+            }
+
+            function refreshKpis(data) {
+                setText('cash-free', data.cash_free, '$');
+                setText('invested-total', data.invested_total, '$');
+                setText('running-value', data.running_value, '$');
+                setText('equity-value', data.equity, '$');
+                setText('profit-total', data.profit_total, '$');
+                setText('updated-at', data.updated_at, '');
+                setText('last-engine-run', data.last_engine_run_at || '-', '');
+
+                var profitEl = document.getElementById('profit-total');
+                if (profitEl) {
+                    var numeric = parseFloat(data.profit_total || '0');
+                    profitEl.classList.remove('pos');
+                    profitEl.classList.remove('neg');
+                    profitEl.classList.add(numeric >= 0 ? 'pos' : 'neg');
+                }
+
+                var engineEl = document.getElementById('engine-state');
+                if (engineEl) {
+                    engineEl.textContent = data.engine_running ? 'běží' : 'neběží';
+                    engineEl.classList.remove('run-ok');
+                    engineEl.classList.remove('run-warn');
+                    engineEl.classList.add(data.engine_running ? 'run-ok' : 'run-warn');
+                }
+
+                var deltaEl = document.getElementById('equity-delta');
+                if (deltaEl) {
+                    deltaEl.classList.remove('pos');
+                    deltaEl.classList.remove('neg');
+                    deltaEl.classList.remove('flat');
+                    if (!data.equity_changed) {
+                        deltaEl.classList.add('flat');
+                        deltaEl.textContent = 'Beze změny (trh se mezitím téměř nepohnul)';
+                    } else {
+                        var deltaVal = parseFloat(data.equity_delta_last_run || '0');
+                        deltaEl.classList.add(deltaVal >= 0 ? 'pos' : 'neg');
+                        deltaEl.textContent = '$' + data.equity_delta_last_run;
+                    }
+                }
+            }
+
+            function pollData() {
+                fetch('/api/dashboard/', { cache: 'no-store' })
+                    .then(function(resp) { return resp.json(); })
+                    .then(function(data) {
+                        if (!data.simulator_ready) {
+                            return;
+                        }
+                        chartState = {
+                            labels: data.chart_labels || [],
+                            equity: data.chart_equity || [],
+                            invested: data.chart_invested || [],
+                            profit: data.chart_profit || []
+                        };
+                        refreshKpis(data);
+                        refreshTables(data);
+                        renderCharts(chartState);
+                    })
+                    .catch(function() {
+                        // Keep previous values when polling fails.
+                    });
+            }
+
+            renderCharts(chartState);
+            pollData();
+            setInterval(pollData, 5000);
+        })();
+    </script>
 </body>
 </html>
