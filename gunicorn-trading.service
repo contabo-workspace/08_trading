@@ -1,0 +1,14 @@
+[Unit]
+Description=Gunicorn instance to serve trading
+After=network.target
+
+[Service]
+User=honza
+Group=www-data
+WorkingDirectory=/srv/apps/08_trading
+EnvironmentFile=-/srv/apps/08_trading/.env
+Environment="DJANGO_SETTINGS_MODULE=_conf.settings.prod"
+ExecStart=/srv/apps/08_trading/.venv/bin/gunicorn _conf.wsgi:application --workers 1 --bind 0.0.0.0:8008
+
+[Install]
+WantedBy=multi-user.target

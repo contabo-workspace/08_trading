@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>trading</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            max-width: 600px;
+            padding: 3rem 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+        }
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+        }
+        .status {
+            display: inline-block;
+            background: #065f46;
+            color: #6ee7b7;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+        .links {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .links a {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .links a:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-secondary { background: #334155; color: #e2e8f0; border: 1px solid #475569; }
+        .info {
+            margin-top: 2.5rem;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>trading</h1>
+        <p class="subtitle">trading.hs-dev.cz</p>
+        <div class="status">&#x2713; Projekt úspěšně nasazen</div>
+        <div class="links">
+            <a href="/admin/" class="btn-primary">Administrace</a>
+            <a href="https://docs.djangoproject.com/" class="btn-secondary" target="_blank">Django dokumentace</a>
+        </div>
+        <p class="info">Tato stránka je součást home appky &mdash; můžete ji upravit v <code>home/templates/home/index.html</code></p>
+    </div>
+</body>
+</html>
